@@ -9,14 +9,16 @@ import bcrypt from 'bcrypt'
 import callPutTodo from './modules/callPutTodo'
 import callPostTodo from './modules/callPostTodo'
 import callDeleteTodo from './modules/callDeleteTodo'
-import callGetTodos from './modules/callGetTodos'
+import callGetUser from './modules/callGetUser'
 import callPostUser from './modules/callPostUser'
+import callGetTodos from './modules/callGetTodos'
 import checkIfUsersExists from './modules/checkIfUserExists'
 import verifyToken from './modules/verifyToken'
+import getTodos from './modules/getTodos'
 
 const app = express()
 
-let todo; let idToDelete; let idToUpdate; let updKeyValue; let newUser; let token;
+let todo; let idToUpdate; let newUser; let token // let _id;
 
 app.use(express.static(`${__dirname}/public`))
 app.use(bodyParser.urlencoded({ extended: true }))
@@ -48,136 +50,123 @@ app.post('/signUp', async (req, res) => {
     login,
     password,
   } = req.body
-  await jwt.sign({ login }, 'salt', (err, newToken) => {
-    if (err) {
-      res.send('token creating error')
-    }
-    token = newToken
-  })
-  console.log(`c token ${token}`)
+
   const lookingUser = await checkIfUsersExists(connectedClient, login).catch(() => {
     res.send('User already exists!')
   })
   const isUserExists = !!lookingUser
 
   if (isUserExists) {
-    await bcrypt.compare(password, lookingUser.hashedPassword).then( async (isEqual) => {
-      if (isEqual) {
-        await connectedClient.db('todos').collection('users').updateOne({ login }, { $set:{ token } }, { upsert: true })
-        console.log(token)
-        console.log('sendin token 1')
-        res.send(token)
-      } else {
-        res.sendStatus(403)
-      }
-    })
+    const { sharedUsers, externalUsers, hashedPassword } = lookingUser
+    try {
+      await jwt.sign({ login, sharedUsers, externalUsers }, 'salt', (err, newToken) => {
+        if (err) {
+          res.send('token creating error')
+        }
+        token = newToken
+      })
+      console.log(`c token ${token}`)
+      await bcrypt.compare(password, hashedPassword).then(async (isEqual) => {
+        if (isEqual) {
+          console.log(token)
+          await connectedClient.db('todos').collection('users').updateOne({ login }, { $set: { token } }, { upsert: true })
+          console.log('sendin token 1')
+          res.send(token)
+        } else {
+          res.sendStatus(403)
+        }
+      })
+    } catch (e) {
+      console.log(e)
+    }
   } else {
-          // if user doesnt exist - creating new
-          try {
-            const hashedPassword = await bcrypt.hash(password, 10)
-            newUser = { login, hashedPassword, token }
-            console.log('3')
-            await connectedClient.db('todos').collection('users').insertOne(newUser)
-            console.log('sendin token 2')
-            console.log(token)
-            res.send(token)
-          } catch (error) {
-            res.send(error)
-          }
+    // if user doesnt exist - creating new
+    try {
+      await jwt.sign({ login, sharedUsers: [], externalUsers: [] }, 'salt', (err, newToken) => {
+        if (err) {
+          res.send('token creating error')
+        }
+        token = newToken
+      })
+      const hashedPassword = await bcrypt.hash(password, 10)
+      newUser = {
+        login, sharedUsers: [], externalUsers: [], hashedPassword, token,
+      }
+      console.log('3')
+      await connectedClient.db('todos').collection('users').insertOne(newUser)
+      console.log('sendin token 2')
+      console.log(token)
+      res.send(token)
+    } catch (error) {
+      res.send(error)
+    }
   }
-
-
-
-
-
-
-
-  // bcrypt.hash(password, 10)
-  //   .then((hashedPassword) => {
-  //     jwt.sign({ login }, 'salt', async (err, token) => { //  { expiresIn: '30s' },
-  //       newUser = { login, hashedPassword, token }
-  //       const lookingUser = await checkIfUsersExists(connectedClient, login).catch(() => {
-  //         res.send('User already exists!')
-  //       })
-  //       const isUserExists = !!lookingUser
-  //       console.log(isUserExists)
-  //       if (isUserExists) {
-  //         //checkin for token validity
-  //         console.log(req.usersToken)
-  //         jwt.verify(token, 'salt', async (err, authData) => {
-  //           console.log(req.token)
-  //           console.log('1')
-  //           if (err) {
-  //             console.log('2')
-  //             console.log(err)
-  //             res.send(err)
-  //           } else {
-  //             //comparing entered pass with hashed copy from DB
-  //             await bcrypt.compare(password, lookingUser.hashedPassword).then((isEqual) => {
-  //               if (isEqual) {
-  //                 connectedClient.db('todos').collection('users').updateOne({ login }, { $set:{ token } }, { upsert: true })
-  //                 console.log('sendin token')
-  //                 console.log(token)
-  //                 res.send(token)
-  //               } else {
-  //                 res.send('Wrong password!')
-  //               }
-  //             })
-  //           }
-  //         })
-  //       } else {
-
-  //       }
-  //     })
-  //   })
 })
 
 app.post('/', verifyToken, (req, res) => {
-  const todoTitle = req.body.title
-  todo = { title: todoTitle, isCompleted: false }
-
-  callPostTodo(connectedClient)
-    .then((result) => {
-      res.json(result)
-        .catch((err) => console.log(err))
-    })
-})
-
-app.get('/', verifyToken, (req, res, next) => {
   jwt.verify(req.token, 'salt', (err, authData) => {
-      console.log('gettin todos ')
-      callGetTodos(connectedClient)
-      .then((result) =>res.json(result))
-      .catch((err) => {
-        console.log('403 from get')
-        console.log(err)
+    const { title, owner } = req.body
+    todo = { title, owner, isCompleted: false }
+
+    callPostTodo(connectedClient)
+      .then((result) => res.send(result))
+      .catch((e) => {
         res.sendStatus(403)
       })
   })
 })
 
-app.delete('/', verifyToken, (req, res) => {
-  idToDelete = req.body._id
-
-  callDeleteTodo(connectedClient)
-    .then((result) => {
-      res.json(result)
+app.get('/', verifyToken, async (req, res) => {
+  try {
+    const { login, externalUsers, sharedUsers } = req.authData
+    console.log(login)
+    const ownTodos = await callGetTodos(connectedClient, login)
+    const promises = externalUsers.map((user) => getTodos(connectedClient, user))
+    const externalTodos = await Promise.all(promises)
+      .then((responses) => {
+        console.log(responses)
+        return Promise.all(responses.map((r) => r.json()))
+      })
+    console.log('+++')
+    res.send({
+      ownTodos, externalTodos, sharedUsers, externalUsers,
     })
-    .catch((err) => console.log(err))
+  } catch (e) {
+    console.log(e)
+  }
+})
+
+app.delete('/', verifyToken, (req, res) => {
+  jwt.verify(req.token, 'salt', (err, authData) => {
+    const { _id } = req.body
+
+    callDeleteTodo(connectedClient, _id)
+      .then((result) => res.send(result))
+      .catch((err) => {
+        res.sendStatus(403)
+      })
+  })
 })
 
 app.put('/', verifyToken, (req, res) => {
-  idToUpdate = req.body._id
-  updKeyValue = req.body.updKeyValue
+  const { _id, updKeyValue } = req.body
 
-  callPutTodo(connectedClient)
-    .then((result) => {
-      res.json(result)
-        .catch((err) => console.log(err))
+  callPutTodo(connectedClient, _id, updKeyValue)
+    .then((result) => res.send(result))
+    .catch((err) => {
+      res.sendStatus(403)
     })
+})
+
+app.put('/user/addSharedUser', verifyToken, async (req, res) => {
+  const { user } = req.body
+  const { login } = req.authData
+  const currentUser = await callGetUser(connectedClient, login)
+  const currentSharedUsers = currentUser.sharedUsers
+  // console.log(currentUser.sharedUsers)
 })
 
 
 export {
-  todo, idToDelete, idToUpdate, updKeyValue, newUser,
+  todo, idToUpdate, newUser, // _id as idToDelete,
 }
