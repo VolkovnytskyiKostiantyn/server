@@ -1,4 +1,4 @@
-export default function checkIfUserExists(client, login) {
+export default function findUser(client, login) {
   const db = client.db('todos')
   return db.collection('users').findOne({ login })
 }

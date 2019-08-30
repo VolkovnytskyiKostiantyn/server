@@ -1,9 +1,8 @@
 import { ObjectID } from 'mongodb'
-import { idToDelete } from '../server'
 
-export default async function deleteTodo(client) {
+export default async function deleteTodo(client, id) {
   const db = client.db('todos')
   return new Promise(() => {
-    db.collection('todos').deleteOne({ _id: ObjectID(idToDelete) })
+    db.collection('todos').deleteOne({ _id: ObjectID(id) })
   })
 }

@@ -12,9 +12,11 @@ import callDeleteTodo from './modules/callDeleteTodo'
 import callGetUser from './modules/callGetUser'
 import callPostUser from './modules/callPostUser'
 import callGetTodos from './modules/callGetTodos'
-import checkIfUsersExists from './modules/checkIfUserExists'
+import findUser from './modules/findUser'
 import verifyToken from './modules/verifyToken'
 import getTodos from './modules/getTodos'
+import updateSharedUsers from './modules/updateSharedUsers'
+import updateExternalUsers from './modules/updateExternalUsers'
 
 const app = express()
 
@@ -38,6 +40,7 @@ let connectedClient
 MongoClient.connect(url, mongoOptions, (err, client) => {
   assert.equal(null, err)
   console.log('connected')
+  console.log('===================')
   connectedClient = client
   app.listen(9999)
   process.on('exit', () => {
@@ -51,26 +54,24 @@ app.post('/signUp', async (req, res) => {
     password,
   } = req.body
 
-  const lookingUser = await checkIfUsersExists(connectedClient, login).catch(() => {
+  const lookingUser = await findUser(connectedClient, login).catch(() => {
     res.send('User already exists!')
   })
   const isUserExists = !!lookingUser
 
   if (isUserExists) {
-    const { sharedUsers, externalUsers, hashedPassword } = lookingUser
+    // console.log('1')
+    const { sharedUsers, hashedPassword } = lookingUser
     try {
-      await jwt.sign({ login, sharedUsers, externalUsers }, 'salt', (err, newToken) => {
+      await jwt.sign({ login }, 'salt', (err, newToken) => {
         if (err) {
           res.send('token creating error')
         }
         token = newToken
       })
-      console.log(`c token ${token}`)
       await bcrypt.compare(password, hashedPassword).then(async (isEqual) => {
         if (isEqual) {
-          console.log(token)
           await connectedClient.db('todos').collection('users').updateOne({ login }, { $set: { token } }, { upsert: true })
-          console.log('sendin token 1')
           res.send(token)
         } else {
           res.sendStatus(403)
@@ -80,9 +81,10 @@ app.post('/signUp', async (req, res) => {
       console.log(e)
     }
   } else {
+    // console.log('1')
     // if user doesnt exist - creating new
     try {
-      await jwt.sign({ login, sharedUsers: [], externalUsers: [] }, 'salt', (err, newToken) => {
+      await jwt.sign({ login }, 'salt', (err, newToken) => {
         if (err) {
           res.send('token creating error')
         }
@@ -92,10 +94,7 @@ app.post('/signUp', async (req, res) => {
       newUser = {
         login, sharedUsers: [], externalUsers: [], hashedPassword, token,
       }
-      console.log('3')
       await connectedClient.db('todos').collection('users').insertOne(newUser)
-      console.log('sendin token 2')
-      console.log(token)
       res.send(token)
     } catch (error) {
       res.send(error)
@@ -118,19 +117,18 @@ app.post('/', verifyToken, (req, res) => {
 
 app.get('/', verifyToken, async (req, res) => {
   try {
-    const { login, externalUsers, sharedUsers } = req.authData
-    console.log(login)
-    const ownTodos = await callGetTodos(connectedClient, login)
-    const promises = externalUsers.map((user) => getTodos(connectedClient, user))
-    const externalTodos = await Promise.all(promises)
-      .then((responses) => {
-        console.log(responses)
-        return Promise.all(responses.map((r) => r.json()))
-      })
-    console.log('+++')
-    res.send({
-      ownTodos, externalTodos, sharedUsers, externalUsers,
-    })
+    const { login } = req.authData
+    const currentUser = await findUser(connectedClient, login)
+    const { sharedUsers, externalUsers } = currentUser
+    // console.log(login)
+    // console.log(externalUsers)
+    const queryArray = [login, ...externalUsers].map((user) => ({ owner: user }))
+    // console.log(queryArray)
+    const todos = await getTodos(connectedClient, { $or: queryArray })
+    // console.log(todos)
+    res.send(JSON.stringify({
+      todos, login, sharedUsers, token, externalUsers,
+    }))
   } catch (e) {
     console.log(e)
   }
@@ -161,12 +159,39 @@ app.put('/', verifyToken, (req, res) => {
 app.put('/user/addSharedUser', verifyToken, async (req, res) => {
   const { user } = req.body
   const { login } = req.authData
-  const currentUser = await callGetUser(connectedClient, login)
+  console.log('user/login')
+  console.log(user)
+  console.log(login)
+  console.log('===================')
+  const currentUser = await findUser(connectedClient, login)
+  console.log('currentUser')
+  console.log(currentUser)
+  console.log('===================')
   const currentSharedUsers = currentUser.sharedUsers
-  // console.log(currentUser.sharedUsers)
+  console.log('currentSharedUsers')
+  console.log(currentSharedUsers)
+  console.log('===================')
+  const usersIndex = currentSharedUsers.findIndex((item) => user === item)
+  const isUserAlreadyShared = usersIndex >= 0
+  if (!isUserAlreadyShared) {
+    currentSharedUsers.push(user)
+  } else {
+    const movedUser = currentSharedUsers.splice(usersIndex, 1)
+    currentSharedUsers.push(movedUser[0])
+  }
+  await updateSharedUsers(connectedClient, login, currentSharedUsers)
+  await updateExternalUsers(connectedClient, user, login)
+  await jwt.sign({ login }, 'salt', (err, newToken) => {
+    if (err) {
+      res.send('token creating error')
+    }
+    token = newToken
+  })
+
+  res.send({ currentSharedUsers, token })
 })
 
 
 export {
-  todo, idToUpdate, newUser, // _id as idToDelete,
+  todo, idToUpdate, newUser,
 }

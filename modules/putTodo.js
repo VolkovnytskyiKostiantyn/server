@@ -1,13 +1,12 @@
 import { ObjectID } from 'mongodb'
-import { idToUpdate, updKeyValue } from '../server'
 
 
-export default async function putTodo(client) {
+export default async function putTodo(client, id, updKeyValue) {
   const db = client.db('todos')
   return new Promise(() => {
     db.collection('todos')
       .updateOne(
-        { _id: ObjectID(idToUpdate) }, { $set: updKeyValue }, { upsert: true },
+        { _id: ObjectID(id) }, { $set: updKeyValue }, { upsert: true },
       )
   })
 }
