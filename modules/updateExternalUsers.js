@@ -1,20 +1,12 @@
+// @flow
 import findUser from './findUser'
 
-export default async function updateExternalUsers(client, sharedUser, sharingUser) {
+export default async function updateExternalUsers(client: Object, sharedUser: string, sharingUser: string) {
   try {
     const db = client.db('todos')
     const updatingUser = await findUser(client, sharedUser)
-    console.log('sharedUser')
-    console.log(sharedUser)
-    console.log('===================')
-    console.log('updatingUser')
-    console.log(updatingUser)
-    console.log('===================')
     const currentExternalUsers = updatingUser.externalUsers
     currentExternalUsers.push(sharingUser)
-    console.log('currentExternalUsers')
-    console.log(currentExternalUsers)
-    console.log('===================')
     //   console.log(currentExternalUsers)
     return (
       db.collection('users')

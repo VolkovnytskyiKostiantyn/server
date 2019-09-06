@@ -1,25 +1,13 @@
+// @flow
 
 import jwt from 'jsonwebtoken'
-// export default function verifyToken(req, res, next) {
-//   const bearerHeader = req.headers.authorization
-//   console.log(req.headers)
-//   // console.log(`bh ${bearerHeader}`)
-//   console.log(`type of bh ${typeof bearerHeader}`)
-//   if (typeof bearerHeader !== 'undefined') {
-//     const bearer = bearerHeader.split(' ')
-//     // console.log(`b ${bearer}`)
-//     const bearerToken = bearer[1]
-//     // console.log(`bt ${bearerToken}`)
-//     req.usersToken = bearerToken
-//     console.log(`VT req.token ${req.usersToken}`)
-//     next()
-//   } else {
-//     console.log('403 from VT')
-//     res.sendStatus(403)
-//   }
-// }
+import type {
+  $Request,
+  $Response,
+  NextFunction,
+ } from 'express'
 
-export default function verifyToken(req, res, next) {
+export default function verifyToken (req: $Request, res: $Response, next: NextFunction) {
   const bearerHeader = req.headers.authorization
   const bearer = bearerHeader.split(' ')
   const bearerToken = bearer[1]
@@ -30,11 +18,12 @@ export default function verifyToken(req, res, next) {
       console.log('403 from VT decoded')
       res.sendStatus(403)
     } else {
-      req.authData = decoded
+      req.params.authData = decoded
+      req.params.token = bearerToken
       next()
     }
   } catch (e) {
-    console.log('403 from VT err')
+    console.log(e)
     res.sendStatus(403)
   }
 }

@@ -1,7 +1,8 @@
+// @flow
 import { ObjectID } from 'mongodb'
 
 
-export default async function putTodo(client, id, updKeyValue) {
+export default async function putTodo(client: Object, id: string, updKeyValue: Object) {
   const db = client.db('todos')
   return new Promise(() => {
     db.collection('todos')

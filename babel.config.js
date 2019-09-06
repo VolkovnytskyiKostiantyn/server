@@ -1,6 +1,6 @@
 const presets = [
   [
-    '@babel/env',
+    '@babel/preset-env',
     {
       targets: {
         edge: '17',
@@ -10,6 +10,7 @@ const presets = [
       },
       useBuiltIns: 'usage',
     },
+    '@babel/preset-flow',
   ],
 ]
 

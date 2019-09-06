@@ -1,4 +1,5 @@
-export default function updateSharedUsers(client, login, newSharedUsers) {
+// @flow
+export default function updateSharedUsers(client: Object, login: string, newSharedUsers: string[]) {
   const db = client.db('todos')
   return (
     db.collection('users')
