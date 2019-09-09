@@ -34,10 +34,9 @@ let todo; let idToUpdate; let newUser; let token
 app.use(express.static(`${__dirname}/public`))
 app.use(bodyParser.urlencoded({ extended: true }))
 app.use(bodyParser.json())
-app.use(verifyToken)
 
 app.use((req: $Request, res: $Response, next: NextFunction) => {
-  res.append('Access-Control-Allow-Origin', '*')
+  res.append('Access-Control-Allow-Origin', ['*'])
   res.append('Access-Control-Allow-Methods', 'GET,PUT,POST,DELETE')
   res.append('Access-Control-Allow-Headers', 'Content-Type')
   res.append('Access-Control-Allow-Headers', 'Authorization')
@@ -45,6 +44,9 @@ app.use((req: $Request, res: $Response, next: NextFunction) => {
   res.append('Access-Control-Allow-Headers', 'X-Requested-With')
   next()
 })
+
+
+// app.use(verifyToken)
 
 const url = 'mongodb+srv://1:2@mymongodbcluster-mwueg.mongodb.net/test?retryWrites=true&w=majority'
 const mongoOptions = { useNewUrlParser: true, useUnifiedTopology: true }
@@ -55,7 +57,7 @@ MongoClient.connect(url, mongoOptions, (err: Error, client: Object): void => {
   console.log('connected')
   console.log('===================')
   connectedClient = client
-  app.listen(9999)
+  app.listen(3010)
   process.on('exit', () => {
     client.close()
   })
@@ -114,7 +116,7 @@ app.post('/signUp', async (req: $Request, res: $Response): Promise<void> => {
   }
 })
 
-app.post('/', (req: $Request, res: $Response): void => {
+app.post('/', verifyToken, (req: $Request, res: $Response): void => {
   jwt.verify(req.params.token, 'salt', (err, authData) => {
     const { title, owner } = req.body
     todo = { title, owner, isCompleted: false }
@@ -127,7 +129,7 @@ app.post('/', (req: $Request, res: $Response): void => {
   })
 })
 
-app.get('/', async (req: $Request, res: $Response): Promise<void> => {
+app.get('/', verifyToken, async (req: $Request, res: $Response): Promise<void> => {
   try {
     const { login } = req.params.authData
     const user = await findUser(connectedClient, login)
@@ -135,31 +137,45 @@ app.get('/', async (req: $Request, res: $Response): Promise<void> => {
     const queryArray = [login, ...externalUsers].map((user) => ({ owner: user }))
     const todos = await getTodos(connectedClient, { $or: queryArray })
     res.send(JSON.stringify({
-      todos, currentUser: login, sharedUsers, token, externalUsers,
+      todos, login, sharedUsers, token, externalUsers,
     }))
   } catch (e) {
     console.log(e)
   }
 })
 
-app.get('/todos', async (req: $Request, res: $Response): Promise<void> => {
+app.get('/users/:username', verifyToken, async (req: $Request, res: $Response): Promise<void> => {
   try {
-    const { login } = req.params.authData
-    const user = await findUser(connectedClient, login)
-    const { sharedUsers, externalUsers } = user
-    const queryArray = [login, ...externalUsers].map((user) => ({ owner: user }))
-    // console.log(queryArray)
-    const todos = await getTodos(connectedClient, { $or: queryArray })
-    // console.log(todos)
+    const user = await findUser(connectedClient, req.params.username)
     res.send(JSON.stringify({
-      todos, currentUser: login, sharedUsers, token, externalUsers,
+      login: user.login,
+      sharedUsers: user.sharedUsers,
+      externalUsers: user.externalUsers
     }))
+  }catch(err) {
+    console.error(err)
+  }
+})
+
+app.get('/todos/:choosenUser', verifyToken, async (req: $Request, res: $Response): Promise<void> => {
+  try {
+      const { login } = req.params.authData
+      const user = await findUser(connectedClient, login)
+      const { sharedUsers, externalUsers } = user
+
+      const todos = await getTodos(connectedClient, { owner: req.params.choosenUser })
+      console.log(todos)
+      res.send(JSON.stringify({
+        todos, login, sharedUsers, token, externalUsers,
+      }))
+
+
   } catch (e) {
     console.log(e)
   }
 })
 
-app.delete('/', (req: $Request, res: $Response): void => {
+app.delete('/', verifyToken, (req: $Request, res: $Response): void => {
   jwt.verify(req.params.token, 'salt', (err, authData) => {
     const { _id } = req.body
 
@@ -171,7 +187,7 @@ app.delete('/', (req: $Request, res: $Response): void => {
   })
 })
 
-app.delete('/delete_many', (req: $Request, res: $Response): void => {
+app.delete('/delete_many', verifyToken, (req: $Request, res: $Response): void => {
   jwt.verify(req.params.token, 'salt', (err, authData) => {
     const { idArr } = req.body
     callDeleteMany(connectedClient, idArr)
@@ -181,7 +197,7 @@ app.delete('/delete_many', (req: $Request, res: $Response): void => {
 })
 
 
-app.put('/', (req: $Request, res: $Response): void => {
+app.put('/', verifyToken, (req: $Request, res: $Response): void => {
   const { _id, updKeyValue } = req.body
 
   callPutTodo(connectedClient, _id, updKeyValue)
@@ -192,7 +208,7 @@ app.put('/', (req: $Request, res: $Response): void => {
 })
 
 
-app.put('/user/addSharedUser', async (req: $Request, res: $Response): Promise<void> => {
+app.put('/user/addSharedUser', verifyToken, async (req: $Request, res: $Response): Promise<void> => {
   const { user } = req.body
   const { login } = req.params.authData
   const currentUser = await findUser(connectedClient, login)
